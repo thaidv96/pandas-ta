@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from numpy import nan as npNaN
+import numpy as np
 from pandas import Series
 from pandas_ta.utils import get_drift, get_offset, verify_series
 
@@ -16,37 +16,47 @@ def vidya(close, length=None, drift=None, offset=None, **kwargs):
         return
 
     def _cmo(source: Series, n: int, d: int):
-        """Chande Momentum Oscillator (CMO) Patch
-        For some reason: from pandas_ta.momentum import cmo causes
-        pandas_ta.momentum.coppock to not be able to import it's
-        wma like from pandas_ta.overlap import wma?
-        Weird Circular TypeError!?!
-        """
+        """Chande Momentum Oscillator (CMO) Patch"""
+        # Ensure source is float64
+        source = source.astype("float64")
         mom = source.diff(d)
-        positive = mom.copy().clip(lower=0)
-        negative = mom.copy().clip(upper=0).abs()
-        pos_sum = positive.rolling(n).sum()
-        neg_sum = negative.rolling(n).sum()
-        return (pos_sum - neg_sum) / (pos_sum + neg_sum)
+        positive = mom.where(mom > 0, 0.0)
+        negative = (-mom).where(mom < 0, 0.0)
+        pos_sum = positive.rolling(n, min_periods=n).sum()
+        neg_sum = negative.rolling(n, min_periods=n).sum()
+        total = pos_sum + neg_sum
+        # Avoid division by zero
+        cmo_result = np.where(total != 0, (pos_sum - neg_sum) / total, 0.0)
+        return Series(cmo_result, index=source.index, dtype="float64")
 
-    # Calculate Result
-    m = close.size
-    alpha = 2.0 / (length + 1.0)  # Ensure float division
-    abs_cmo = _cmo(close, length, drift).abs()
+    # Ensure close is float64 from the start
+    close = close.astype("float64")
 
-    # Create a copy of close as float64 and fill with NaN initially
-    vidya = close.astype("float64").copy()
-    vidya.iloc[:] = npNaN
+    # Calculate CMO and get absolute values
+    cmo_vals = _cmo(close, length, drift)
+    abs_cmo = np.abs(cmo_vals.values)  # Work with numpy array to avoid pandas issues
 
-    # Set the first valid value (at length-1 index) to the close price
-    start_idx = length - 1
-    vidya.iloc[start_idx] = close.iloc[start_idx]
+    # Initialize result array with NaN
+    result = np.full(len(close), np.nan, dtype=np.float64)
+    close_vals = close.values  # Work with numpy arrays
 
-    # Vectorized calculation where possible, but keep loop for dependency
-    for i in range(length, m):
-        if not (abs_cmo.iloc[i] != abs_cmo.iloc[i]):  # Check for NaN
-            factor = alpha * abs_cmo.iloc[i]
-            vidya.iloc[i] = factor * close.iloc[i] + vidya.iloc[i - 1] * (1.0 - factor)
+    # VIDYA calculation parameters
+    alpha = 2.0 / (length + 1.0)
+
+    # Set initial value at length-1 position
+    if len(close_vals) > length - 1:
+        result[length - 1] = close_vals[length - 1]
+
+    # Calculate VIDYA values
+    for i in range(length, len(close_vals)):
+        if not np.isnan(abs_cmo[i]) and not np.isnan(result[i - 1]):
+            vi = alpha * abs_cmo[i]
+            result[i] = vi * close_vals[i] + result[i - 1] * (1.0 - vi)
+
+    # Convert back to Series
+    vidya = Series(result, index=close.index, dtype="float64")
+    vidya.name = f"VIDYA_{length}"
+    vidya.category = "overlap"
 
     # Offset
     if offset != 0:
@@ -57,10 +67,6 @@ def vidya(close, length=None, drift=None, offset=None, **kwargs):
         vidya.fillna(kwargs["fillna"], inplace=True)
     if "fill_method" in kwargs:
         vidya.fillna(method=kwargs["fill_method"], inplace=True)
-
-    # Name & Category
-    vidya.name = f"VIDYA_{length}"
-    vidya.category = "overlap"
 
     return vidya
 
@@ -83,7 +89,8 @@ Calculation:
     
     CMO = Chande Momentum Oscillator
     alpha = 2 / (length + 1)
-    VIDYA[i] = alpha * |CMO[i]| * close[i] + VIDYA[i-1] * (1 - alpha * |CMO[i]|)
+    VI = alpha * |CMO|
+    VIDYA[i] = VI * close[i] + VIDYA[i-1] * (1 - VI)
 
 Args:
     close (pd.Series): Series of 'close's
