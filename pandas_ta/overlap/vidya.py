@@ -31,19 +31,22 @@ def vidya(close, length=None, drift=None, offset=None, **kwargs):
 
     # Calculate Result
     m = close.size
-    alpha = 2 / (length + 1)
+    alpha = 2.0 / (length + 1.0)  # Ensure float division
     abs_cmo = _cmo(close, length, drift).abs()
 
-    # Initialize with float dtype and NaN values
-    vidya = Series(npNaN, index=close.index, dtype="float64")
+    # Create a copy of close as float64 and fill with NaN initially
+    vidya = close.astype("float64").copy()
+    vidya.iloc[:] = npNaN
 
     # Set the first valid value (at length-1 index) to the close price
-    vidya.iloc[length - 1] = close.iloc[length - 1]
+    start_idx = length - 1
+    vidya.iloc[start_idx] = close.iloc[start_idx]
 
+    # Vectorized calculation where possible, but keep loop for dependency
     for i in range(length, m):
-        vidya.iloc[i] = alpha * abs_cmo.iloc[i] * close.iloc[i] + vidya.iloc[i - 1] * (
-            1 - alpha * abs_cmo.iloc[i]
-        )
+        if not (abs_cmo.iloc[i] != abs_cmo.iloc[i]):  # Check for NaN
+            factor = alpha * abs_cmo.iloc[i]
+            vidya.iloc[i] = factor * close.iloc[i] + vidya.iloc[i - 1] * (1.0 - factor)
 
     # Offset
     if offset != 0:
