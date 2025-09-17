@@ -50,10 +50,7 @@ setup(
     package_data={
         "data": ["data/*.csv"],
     },
-    install_requires=[
-        "numpy==1.26.4",
-        "pandas"
-    ],
+    install_requires=["pandas"],
     # List additional groups of dependencies here (e.g. development dependencies).
     # You can install these using the following syntax, for example:
     # $ pip install -e .[dev,test]
