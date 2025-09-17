@@ -33,12 +33,17 @@ def vidya(close, length=None, drift=None, offset=None, **kwargs):
     m = close.size
     alpha = 2 / (length + 1)
     abs_cmo = _cmo(close, length, drift).abs()
+
+    # Initialize with float dtype and NaN values
     vidya = Series(npNaN, index=close.index, dtype="float64")
+
+    # Set the first valid value (at length-1 index) to the close price
+    vidya.iloc[length - 1] = close.iloc[length - 1]
+
     for i in range(length, m):
         vidya.iloc[i] = alpha * abs_cmo.iloc[i] * close.iloc[i] + vidya.iloc[i - 1] * (
             1 - alpha * abs_cmo.iloc[i]
         )
-    vidya.replace({0: npNaN}, inplace=True)
 
     # Offset
     if offset != 0:
@@ -71,22 +76,19 @@ Sources:
 
 Calculation:
     Default Inputs:
-        length=10, adjust=False, sma=True
-    if sma:
-        sma_nth = close[0:length].sum() / length
-        close[:length - 1] = np.NaN
-        close.iloc[length - 1] = sma_nth
-    EMA = close.ewm(span=length, adjust=adjust).mean()
+        length=14, drift=1
+    
+    CMO = Chande Momentum Oscillator
+    alpha = 2 / (length + 1)
+    VIDYA[i] = alpha * |CMO[i]| * close[i] + VIDYA[i-1] * (1 - alpha * |CMO[i]|)
 
 Args:
     close (pd.Series): Series of 'close's
     length (int): It's period. Default: 14
+    drift (int): The difference period for CMO calculation. Default: 1
     offset (int): How many periods to offset the result. Default: 0
 
 Kwargs:
-    adjust (bool, optional): Use adjust option for EMA calculation. Default: False
-    sma (bool, optional): If True, uses SMA for initial value for EMA calculation. Default: True
-    talib (bool): If True, uses TA-Libs implementation for CMO. Otherwise uses EMA version. Default: True
     fillna (value, optional): pd.DataFrame.fillna(value)
     fill_method (value, optional): Type of fill method
 
